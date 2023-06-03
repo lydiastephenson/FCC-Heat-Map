@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visualize Data with a Heat Map</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Barlow', sans-serif;
+            background-color: #E6E8E6;
+            color: #2B2C28;
+        }
+        #graph {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-evenly;
+            align-items: center;
+        }
+        #tooltip {
+            background-color: #C1DFF0;
+            padding: 0.5rem;
+            border-radius: 5px;
+            text-align: center;
+            font-size: 0.75rem;
+        }
+    </style>
+</head>
+<body>
+    <div id="graph"></div>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdn.freecodecamp.org/testable-projects-fcc/v1/bundle.js"></script>
+    <script>
+        const margin = {top: 10, left: 65, bottom: 50, right: 20}
+        const height = 400 - margin.top - margin.bottom;
+        const width = 1100 - margin.left - margin.right;
+        const colours = [
+            "#4575b5", "#75add2", "#abd9e9", "#e0f3f9", "#ffffbf", "#ffe090", "#fdae61", "#f56d43", "#d73027"
+        ];
+        const months = [
+            "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"
+        ];
+
+        // ADD TITLE TO GRAPH
+        d3.select("#graph")
+        .append("h1")
+        .text("Monthly Global Land-Surface Temperature")
+        .attr("id", "title")
+        .style("margin-bottom", 0);
+
+        // ADD DESCRIPTION TO GRAPH
+        d3.select("#graph")
+        .append("p")
+        .text("1753 - 2015: base temperature 8.66℃")
+        .attr("id", "description")
+        .style("margin-top", 0);
+
+        // ADD TOOLTIP TO GRAPH
+        const tooltip = d3
+        .select("#graph")
+        .append("div")
+        .attr("id", "tooltip")
+        .style("opacity", 0)
+        .style("position", "absolute");
+
+        // CREATE SVG IN GRAPH
+        const svg = d3
+        .select("#graph")
+        .append("svg")
+        .attr("viewBox", `0 0 ${width + margin.right + margin.left} ${height + margin.top + margin.bottom}`);
+
+        d3.json("https://raw.githubusercontent.com/freeCodeCamp/ProjectReferenceData/master/global-temperature.json")
+        .then(data => {
+            const dataset = data["monthlyVariance"];
+            const base_temp = data["baseTemperature"];
+            const years = dataset.map((i) => i["year"]);
+            let year_range = d3.max(years) - d3.min(years);
+            const variance = dataset.map((i) => base_temp + i["variance"]);
+            let min_temp = d3.min(variance);
+            let max_temp = d3.max(variance);
+
+            const legend_color = d3
+                .scaleThreshold()
+                .domain(
+                    ((min, max, count) => {
+                        let arr = [];
+                        let step = (max - min) / count;
+                        let base = min;
+                        for (let i = 1; i < count; i++) {
+                            arr.push(base + i * step);
+                        }
+                        return arr;
+                    })(min_temp, max_temp, colours.length)
+                )
+                .range(colours);
+
+            // ADD LEGEND TO GRAPH
+            const legend = d3
+                .select("#graph")
+                .append("svg")
+                .attr("id", "legend")
+
+            legend.selectAll("rect")
+                .data(colours).enter()
+                .append("rect")
+                .attr("width", 30)
+                .attr("height", 30)
+                .attr("x", (d, i) => 30 * i)
+                .attr("y", 0)
+                .style("fill", (d) => d)
+                .style("stroke", "#2B2C28")
+                .style("stroke-width", 0.5);
+
+            let legend_x = d3
+                .scaleLinear()
+                .domain([min_temp, max_temp])
+                .range([0, 30 * colours.length]);
+
+            let legend_axis = d3
+                .axisBottom()
+                .scale(legend_x)
+                .tickSize(10, 0)
+                .tickValues(legend_color.domain())
+                .tickFormat(d3.format(".1f"));
+
+            legend.append("g")
+                .call(legend_axis)
+                .attr("transform", "translate(0, 30)");
+
+            // X SCALE & X AXIS
+            let x_scale = d3
+                .scaleLinear()
+                .domain([d3.min(years), d3.max(years) + 1])
+                .range([0, width]);
+            let x_axis = d3
+                .axisBottom(x_scale)
+                .ticks(year_range / 10)
+                .tickFormat(d3.format("d"));
+            svg.append("g")
+                .call(x_axis)
+                .attr("id", "x-axis")
+                .attr("transform", `translate(${margin.left}, ${height + margin.top})`);
+
+            // Y SCALE & Y AXIS
+            let y_scale = d3
+                .scaleBand()
+                .domain([11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0])
+                .range([height, 0]);
+            let y_axis = d3
+                .axisLeft(y_scale)
+                .tickFormat((m) => months[m])
+            svg.append("g")
+                .call(y_axis)
+                .attr("id", "y-axis")
+                .attr("transform", `translate(${margin.left}, ${margin.top})`);
+
+            // ADD CELLS TO GRAPH
+            svg.selectAll("rect")
+                .data(dataset).enter()
+                .append("rect")
+                .attr("class", "cell")
+                .attr("data-month", (d) => d["month"] - 1)
+                .attr("data-year", (d) => d["year"])
+                .attr("data-temp", (d) => base_temp + d["variance"])
+                .attr("width", width / year_range)
+                .attr("height", height / 12)
+                .attr("x", (d) => x_scale(d["year"]))
+                .attr("y", (d) => y_scale(d["month"] - 1))
+                .style("fill", (d) => legend_color(base_temp + d["variance"]))
+                .style("cursor", "pointer")
+                .attr("transform", `translate(${margin.left}, ${margin.top})`)
+                .on("mouseover", (e, d) => {
+                    tooltip.transition().duration(100).style("opacity", 0.9);
+
+                    tooltip.html(`${d["year"]} - ${months[d["month"]]}<br>${(d["variance"] + base_temp).toFixed(1)}°C<br>${d["variance"].toFixed(1)}°C<br>`)
+                    .style("top", e.pageY - 30 + "px")
+                    .style("left", e.pageX + 10 + "px")
+                    .attr("data-year", d["year"]);
+
+                    d3.select(e.target)
+                    .style("stroke", "#2B2C28")
+                    .style("stroke-width", 1);
+                })
+                .on("mouseout", (e) => {
+                    tooltip.transition().duration(200).style("opacity", 0);
+                    d3.select(e.target).style("stroke", "none");
+                });
+        })
+        .catch(e => console.log(e));
+    </script>
+</body>
+</html>
